@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>シールPDF作成ツール v5</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', 'Yu Gothic', sans-serif;
+    background: #f5f5f3;
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 2rem 1rem;
+    color: #1a1a1a;
+  }
+  .card {
+    background: #fff;
+    border-radius: 12px;
+    border: 0.5px solid #e0e0e0;
+    padding: 2rem;
+    width: 100%;
+    max-width: 560px;
+  }
+  h1 { font-size: 17px; font-weight: 500; margin-bottom: 1.5rem; color: #111; }
+  .field { margin-bottom: 14px; }
+  label { display: block; font-size: 11px; color: #888; margin-bottom: 4px; letter-spacing: 0.03em; }
+  label span.req { color: #c0392b; margin-left: 4px; }
+  label span.opt { color: #ccc; margin-left: 4px; }
+  label span.hint { color: #ccc; font-size: 10px; margin-left: 4px; }
+  input[type=text] {
+    width: 100%; padding: 8px 10px; font-size: 13px;
+    border: 0.5px solid #ddd; border-radius: 7px; outline: none;
+    font-family: inherit; color: #111; background: #fff;
+  }
+  input[type=text]:focus { border-color: #888; }
+  .btn {
+    width: 100%; padding: 10px 0; font-size: 13px; font-weight: 500;
+    border-radius: 7px; cursor: pointer; border: none;
+    font-family: inherit; margin-top: 1.25rem;
+    background: #111; color: #fff;
+  }
+  .btn:hover { opacity: 0.8; }
+  .btn:disabled { opacity: 0.4; cursor: default; }
+  .preview-section { margin-top: 1.5rem; }
+  .tab-row {
+    display: flex; border: 0.5px solid #e0e0e0;
+    border-radius: 8px; overflow: hidden; margin-bottom: 10px;
+  }
+  .tab {
+    flex: 1; padding: 7px 0; font-size: 12px; text-align: center;
+    cursor: pointer; border: none; background: transparent; color: #888;
+    font-family: inherit;
+  }
+  .tab.active { background: #111; color: #fff; font-weight: 500; }
+  .preview-wrap { border: 0.5px solid #e0e0e0; border-radius: 10px; overflow: hidden; background: #fafafa; }
+  .preview-header {
+    padding: 8px 14px; font-size: 11px; color: #999;
+    border-bottom: 0.5px solid #e0e0e0;
+    display: flex; justify-content: space-between;
+  }
+  canvas { display: block; margin: 0 auto; max-width: 100%; }
+  .dl-row { display: flex; gap: 8px; margin-top: 10px; }
+  .dl-btn {
+    flex: 1; padding: 8px 0; font-size: 12px; text-align: center;
+    border: 0.5px solid #ddd; border-radius: 7px; cursor: pointer;
+    background: #fff; color: #111; font-family: inherit;
+  }
+  .dl-btn:hover { background: #f5f5f5; }
+  .status { font-size: 12px; color: #999; margin-top: 10px; text-align: center; min-height: 18px; }
+  .status.error { color: #c0392b; }
+  .status.success { color: #27ae60; }
+  #bc-canvas { display: none; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>シールPDF作成ツール</h1>
+
+  <div class="field">
+    <label>OCRコード <span class="opt">任意</span></label>
+    <input type="text" id="ocr" value="FH0001990403000">
+  </div>
+  <div class="field">
+    <label>商品名 <span class="opt">任意</span></label>
+    <input type="text" id="pname" value="●ﾐﾆｾｯﾄ ﾍﾞﾙﾒ/x3定期ｺｰｽﾌﾟﾚｾﾞﾝﾄ">
+  </div>
+  <div class="field">
+    <label>JAN / 商品コード <span class="req">必須</span> <span class="hint">13桁数字→EAN13 / それ以外→CODE128</span></label>
+    <input type="text" id="jan" value="2100034397362">
+  </div>
+
+  <button class="btn" id="gen-btn" onclick="generate()">プレビュー生成</button>
+
+  <div class="preview-section" id="preview-area" style="display:none">
+    <div class="tab-row">
+      <button class="tab active" id="tab44" onclick="switchTab(44)">44面</button>
+      <button class="tab" id="tab1" onclick="switchTab(1)">1面</button>
+    </div>
+    <div class="preview-wrap">
+      <div class="preview-header">
+        <span id="preview-label">プレビュー（44面）</span>
+        <span id="preview-size">A4 / 48.3×25.4mm × 44</span>
+      </div>
+      <canvas id="cv"></canvas>
+    </div>
+    <div class="dl-row">
+      <button class="dl-btn" onclick="downloadPDF(44)">⬇ 44面PDF</button>
+      <button class="dl-btn" onclick="downloadPDF(1)">⬇ 1面PDF</button>
+    </div>
+  </div>
+  <div class="status" id="status"></div>
+</div>
+
+<canvas id="bc-canvas"></canvas>
+
+<script>
+const { jsPDF } = window.jspdf;
+var currentTab = 44;
+var barcodeDataUrl = null;
+var janText = '';
+var bcNaturalW = 0, bcNaturalH = 0;
+var bcImage = null; // ロード済みImageオブジェクト
+
+// ラベル寸法 (mm)
+var LW = 48.3, LH = 25.4, MX = 8.4, MY = 8.8;
+
+// レイアウト比率 (mm) — 画像レイアウト基準
+// OCR:   上1mm, 高さ2.5mm
+// 商品名: その下1mm, 高さ3mm
+// バーコード: 残り全部(上下1mm余白)
+var OCR_TOP    = 0.5;   // mm
+var OCR_H      = 2.0;   // mm
+var NAME_GAP   = 0.4;   // OCR下からの間隔
+var NAME_H     = 2.5;   // mm
+var BC_GAP     = 2.4;   // 商品名下からの間隔（+2mm）
+var BC_BOT     = 0.5;   // 下余白
+
+var JFONT = "'Noto Sans JP','Hiragino Kaku Gothic ProN','Meiryo','Yu Gothic',sans-serif";
+
+function setStatus(msg, type) {
+  var el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = 'status' + (type ? ' ' + type : '');
+}
+
+function generateBarcode(jan) {
+  var bc = document.getElementById('bc-canvas');
+  var isEAN = /^\d{13}$/.test(jan);
+  JsBarcode(bc, jan, {
+    format: isEAN ? 'EAN13' : 'CODE128',
+    width: 2,
+    height: 40,
+    fontSize: 0,
+    margin: 0,
+    marginTop: 0,
+    displayValue: false,
+    background: '#ffffff',
+    lineColor: '#000000',
+    valid: function() { return true; }
+  });
+  barcodeDataUrl = bc.toDataURL('image/png');
+  bcNaturalW = bc.width;
+  bcNaturalH = bc.height;
+}
+
+// mm→px変換 (scale付き)
+function mm2px(mm, scale) { return mm * scale; }
+
+function drawLabel(ctx, x, y, scale, ocr, pname) {
+  var wPx = mm2px(LW, scale);
+  var hPx = mm2px(LH, scale);
+  var _ = hPx; // hPx確保
+
+  // --- ゾーン計算 ---
+  var ocrTop  = mm2px(OCR_TOP, scale);
+  var ocrH    = mm2px(OCR_H, scale);
+  var nameTop = ocrTop + ocrH + mm2px(NAME_GAP, scale);
+  var nameH   = mm2px(NAME_H, scale);
+  var bcTop   = nameTop + nameH + mm2px(BC_GAP, scale);
+
+  // OCRなしなら商品名を上に
+  if (!ocr) {
+    nameTop = mm2px(OCR_TOP, scale);
+    bcTop   = nameTop + nameH + mm2px(BC_GAP, scale);
+  }
+
+  var janFsH  = mm2px(3.2, scale);           // JAN数字の高さ
+  var janBot  = mm2px(0.3, scale);           // JAN数字下余白
+  var janTop  = y + hPx - janBot;            // JAN数字のY座標(baseline)
+  var bcBot   = janTop - janFsH - mm2px(0.3, scale); // バーコード下端
+
+  var bcAreaH = bcBot - (y + bcTop);
+  var bcW     = wPx * 0.92;
+  // 高さをエリアいっぱいに、幅は比率維持
+  var bcH = bcAreaH;
+  var bcWfit = bcH * (bcNaturalW / bcNaturalH);
+  if (bcWfit < bcW) bcW = bcWfit; // 幅がラベルを超えないよう
+  var bcX = x + (wPx - bcW) / 2;
+  var bcY = bcBot - bcH;  // 下端固定
+
+  ctx.textAlign = 'center';
+
+  // OCR
+  if (ocr) {
+    var ocrFs = mm2px(2.0, scale);
+    ctx.font = ocrFs + 'px ' + JFONT;
+    ctx.fillStyle = '#666';
+    ctx.fillText(ocr, x + wPx/2, y + ocrTop + ocrH * 0.8);
+  }
+
+  // 商品名（フォント自動縮小）
+  if (pname) {
+    var maxW  = wPx * 0.94;
+    var nFs   = mm2px(2.2, scale);
+    var minFs = mm2px(1.0, scale);
+    while (nFs >= minFs) {
+      ctx.font = nFs + 'px ' + JFONT;
+      if (ctx.measureText(pname).width <= maxW) break;
+      nFs -= mm2px(0.1, scale);
+    }
+    ctx.font = nFs + 'px ' + JFONT;
+    ctx.fillStyle = '#111';
+    ctx.fillText(pname, x + wPx/2, y + nameTop + nameH * 0.78);
+  }
+
+  // バーコード
+  if (bcImage && bcImage.complete) {
+    ctx.drawImage(bcImage, bcX, bcY, bcW, bcH);
+  }
+
+  // JANコード数字をそのまま描画（OCRと同サイズ、枠内自動縮小）
+  if (janText) {
+    var janFs = mm2px(3.2, scale);
+    var janMinFs = mm2px(1.0, scale);
+    var janMaxW = wPx * 0.94;
+    ctx.textAlign = 'center';
+    while (janFs >= janMinFs) {
+      ctx.font = janFs + 'px ' + JFONT;
+      if (ctx.measureText(janText).width <= janMaxW) break;
+      janFs -= mm2px(0.1, scale);
+    }
+    ctx.font = janFs + 'px ' + JFONT;
+    ctx.fillStyle = '#000';
+    ctx.fillText(janText, x + wPx/2, janTop);
+  }
+}
+
+function generate() {
+  var ocr   = document.getElementById('ocr').value.trim();
+  var pname = document.getElementById('pname').value.trim();
+  var jan   = document.getElementById('jan').value.trim();
+
+  if (!jan) { setStatus('JANを入力してください', 'error'); return; }
+
+  document.getElementById('gen-btn').disabled = true;
+  setStatus('生成中...');
+
+  janText = jan;
+  try {
+    generateBarcode(jan);
+  } catch(e) {
+    setStatus('バーコード生成に失敗しました', 'error');
+    document.getElementById('gen-btn').disabled = false;
+    return;
+  }
+
+  // フォントとバーコード画像をロードしてから描画
+  bcImage = new Image();
+  bcImage.onload = function() {
+    document.fonts.ready.then(function() {
+      document.getElementById('preview-area').style.display = 'block';
+      renderPreview(currentTab, ocr, pname);
+      setStatus('生成完了', 'success');
+      document.getElementById('gen-btn').disabled = false;
+    });
+  };
+  bcImage.src = barcodeDataUrl;
+}
+
+function renderPreview(mode, ocr, pname) {
+  var cv  = document.getElementById('cv');
+  var scale = 3; // 3px/mm
+  cv.width  = mode === 44 ? Math.round(210*scale) : Math.round(LW*scale);
+  cv.height = mode === 44 ? Math.round(297*scale) : Math.round(LH*scale);
+  var ctx = cv.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, cv.width, cv.height);
+
+  if (mode === 44) {
+    for (var r = 0; r < 11; r++)
+      for (var c = 0; c < 4; c++)
+        drawLabel(ctx, (MX+c*LW)*scale, (MY+r*LH)*scale, scale, ocr, pname);
+  } else {
+    drawLabel(ctx, 0, 0, scale, ocr, pname);
+  }
+}
+
+function switchTab(mode) {
+  currentTab = mode;
+  document.getElementById('tab44').className = 'tab' + (mode===44?' active':'');
+  document.getElementById('tab1').className  = 'tab' + (mode===1 ?' active':'');
+  document.getElementById('preview-label').textContent = mode===44?'プレビュー（44面）':'プレビュー（1面）';
+  document.getElementById('preview-size').textContent  = mode===44?'A4 / 48.3×25.4mm × 44':'48.3×25.4mm';
+  var ocr   = document.getElementById('ocr').value.trim();
+  var pname = document.getElementById('pname').value.trim();
+  if (barcodeDataUrl) renderPreview(mode, ocr, pname);
+}
+
+function downloadPDF(mode) {
+  var ocr   = document.getElementById('ocr').value.trim();
+  var pname = document.getElementById('pname').value.trim();
+  if (!barcodeDataUrl) { setStatus('先にプレビュー生成してください', 'error'); return; }
+  setStatus('PDF生成中...');
+
+  var scale = 10; // 10px/mm
+  var doc, cv, ctx, imgData;
+
+  if (mode === 44) {
+    // A4全体を1枚のCanvasで描画→PDFに1枚貼り付け（位置ズレなし）
+    cv = document.createElement('canvas');
+    cv.width  = Math.round(210 * scale);
+    cv.height = Math.round(297 * scale);
+    ctx = cv.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    for (var r = 0; r < 11; r++)
+      for (var c = 0; c < 4; c++)
+        drawLabel(ctx, (MX+c*LW)*scale, (MY+r*LH)*scale, scale, ocr, pname);
+    imgData = cv.toDataURL('image/png');
+    doc = new jsPDF({ unit:'mm', format:'a4', orientation:'portrait' });
+    doc.addImage(imgData, 'PNG', 0, 0, 210, 297);
+    doc.save('sticker_44.pdf');
+  } else {
+    cv = document.createElement('canvas');
+    cv.width  = Math.round(LW * scale);
+    cv.height = Math.round(LH * scale);
+    ctx = cv.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    drawLabel(ctx, 0, 0, scale, ocr, pname);
+    imgData = cv.toDataURL('image/png');
+    doc = new jsPDF({ unit:'mm', format:[LW, LH] });
+    doc.addImage(imgData, 'PNG', 0, 0, LW, LH);
+    doc.save('sticker_1.pdf');
+  }
+  setStatus('PDFをダウンロードしました', 'success');
+}
+</script>
+</body>
+</html>
